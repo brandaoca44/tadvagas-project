@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CANDIDATE
+  COMPANY
+  ADMIN
+}
+
+enum JobType {
+  CLT
+  PJ
+  INTERNSHIP
+}
+
+enum JobModality {
+  REMOTE
+  HYBRID
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  INTERVIEW
+  REJECTED
+  HIRED
+  WITHDRAWN
+}
+
+enum TrustStatus {
+  VERIFIED
+  PENDING
+  FLAGGED
+}
+
+enum VerificationStatus {
+  NOT_SUBMITTED
+  IN_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum ReportReason {
+  SCAM
+  CHARGED_FEE
+  FALSE_INFORMATION
+  SUSPICIOUS_CONTACT
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id               String   @id @default(uuid())
+  email            String   @unique @db.VarChar(255)
+  passwordHash     String
+  role             UserRole
+  refreshTokenHash String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  candidateProfile CandidateProfile?
+  companyProfile   CompanyProfile?
+
+  applications     Application[]
+  reports          Report[]         @relation("ReportAuthor")
+  adminActions     AdminAction[]    @relation("AdminUser")
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model CandidateProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  fullName          String   @db.VarChar(120)
+  city              String?  @db.VarChar(80)
+  state             String?  @db.VarChar(80)
+  bio               String?  @db.VarChar(500)
+
+  hardSkills        String[]
+  softSkills        String[]
+  powerSkills       String[]
+
+  professionalGoal  String?  @db.VarChar(120)
+  preferredJobTypes JobType[]
+  preferredModes    JobModality[]
+  desiredArea       String?  @db.VarChar(100)
+
+  salaryExpectationMin Int?
+  salaryExpectationMax Int?
+
+  education         String?  @db.VarChar(200)
+  languages         String[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([city, state])
+  @@map("candidate_profiles")
+}
+
+model CompanyProfile {
+  id                  String             @id @default(uuid())
+  userId              String             @unique
+  name                String             @db.VarChar(160)
+  corporateEmail      String?            @db.VarChar(255)
+  domain              String?            @db.VarChar(120)
+  website             String?            @db.VarChar(255)
+  description         String?            @db.VarChar(1000)
+
+  trustScore          Int                @default(0)
+  trustStatus         TrustStatus        @default(PENDING)
+  verificationStatus  VerificationStatus @default(NOT_SUBMITTED)
+  verifiedAt          DateTime?
+
+  isActive            Boolean            @default(true)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs                Job[]
+  reports             Report[]           @relation("ReportedCompany")
+
+  @@index([trustStatus])
+  @@index([verificationStatus])
+  @@index([isActive])
+  @@map("company_profiles")
+}
+
+model Job {
+  id                  String       @id @default(uuid())
+  companyId           String
+
+  title               String       @db.VarChar(120)
+  description         String       @db.Text
+
+  type                JobType
+  modality            JobModality
+
+  locationCity        String?      @db.VarChar(80)
+  locationState       String?      @db.VarChar(80)
+
+  salaryMin           Int?
+  salaryMax           Int?
+  salaryToBeDiscussed Boolean      @default(false)
+  variableCompensation String?     @db.VarChar(255)
+
+  hardSkillsRequired  String[]
+  softSkillsDesired   String[]
+  powerSkills         String[]
+
+  requirements        String?      @db.Text
+  benefits            String?      @db.Text
+
+  processSteps        String[]
+  testRequired        Boolean      @default(false)
+  testDescription     String?      @db.Text
+
+  trustScore          Int          @default(0)
+  trustStatus         TrustStatus  @default(PENDING)
+
+  active              Boolean      @default(true)
+  publishedAt         DateTime     @default(now())
+  applicationDeadline DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  company             CompanyProfile @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  applications        Application[]
+  reports             Report[]       @relation("ReportedJob")
+
+  @@index([companyId])
+  @@index([active])
+  @@index([trustStatus])
+  @@index([publishedAt])
+  @@index([type, modality])
+  @@index([locationCity, locationState])
+  @@map("jobs")
+}
+
+model Application {
+  id          String            @id @default(uuid())
+  userId      String
+  jobId       String
+  status      ApplicationStatus @default(SUBMITTED)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job         Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+  @@index([status])
+  @@map("applications")
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  authorId    String
+  jobId       String?
+  companyId   String?
+  reason      ReportReason
+  details     String?      @db.VarChar(1000)
+  status      ReportStatus @default(OPEN)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  author      User         @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  job         Job?         @relation("ReportedJob", fields: [jobId], references: [id], onDelete: Cascade)
+  company     CompanyProfile? @relation("ReportedCompany", fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([authorId])
+  @@index([jobId])
+  @@index([companyId])
+  @@index([status])
+  @@map("reports")
+}
+
+model AdminAction {
+  id          String   @id @default(uuid())
+  adminId     String
+  targetType  String   @db.VarChar(50)
+  targetId    String   @db.VarChar(100)
+  action      String   @db.VarChar(100)
+  reason      String?  @db.VarChar(500)
+  createdAt   DateTime @default(now())
+
+  admin       User     @relation("AdminUser", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([targetType, targetId])
+  @@map("admin_actions")
+}
