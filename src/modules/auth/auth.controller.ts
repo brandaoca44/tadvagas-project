@@ -74,23 +74,23 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @UseGuards(JwtRefreshGuard)
-  @HttpCode(HttpStatus.OK)
-  async refresh(
-    @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = await this.authService.refresh(
-      user.sub,
-      user.refreshToken as string,
-    );
+@UseGuards(JwtRefreshGuard)
+@HttpCode(HttpStatus.OK)
+async refresh(
+  @CurrentUser() user: AuthenticatedUser,
+  @Res({ passthrough: true }) res: Response,
+) {
+  const result = await this.authService.refresh(
+    user.sub,
+    user.refreshToken as string,
+  );
 
-    this.setAuthCookies(res, result.accessToken, result.refreshToken);
+  this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
-    return {
-      message: 'Sessão renovada com sucesso.',
-    };
-  }
+  return {
+    message: 'Sessão renovada com sucesso.',
+  };
+}
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)

@@ -6,11 +6,14 @@ import {
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { UserRole } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterCandidateDto } from './dto/register-candidate.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
+
+type SafeUser<T> = Omit<T, 'passwordHash' | 'refreshTokenHash'>;
 
 @Injectable()
 export class AuthService {
@@ -36,7 +39,7 @@ export class AuthService {
         data: {
           email: dto.email,
           passwordHash,
-          role: 'CANDIDATE',
+          role: UserRole.CANDIDATE,
         },
       });
 
@@ -74,7 +77,7 @@ export class AuthService {
         data: {
           email: dto.email,
           passwordHash,
-          role: 'COMPANY',
+          role: UserRole.COMPANY,
         },
       });
 
@@ -106,6 +109,10 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException('Conta desativada.');
+    }
+
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
 
     if (!passwordValid) {
@@ -129,6 +136,10 @@ export class AuthService {
       throw new UnauthorizedException('Acesso negado.');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException('Conta desativada.');
+    }
+
     const isMatch = await bcrypt.compare(refreshToken, user.refreshTokenHash);
 
     if (!isMatch) {
@@ -141,9 +152,7 @@ export class AuthService {
   async logout(userId: string) {
     await this.prisma.user.update({
       where: { id: userId },
-      data: {
-        refreshTokenHash: null,
-      },
+      data: { refreshTokenHash: null },
     });
   }
 
@@ -163,40 +172,38 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
-  private async generateTokens(userId: string, email: string, role: string) {
-    const payload = {
-      sub: userId,
-      email,
-      role,
-    };
+  private async generateTokens(
+  userId: string,
+  email: string,
+  role: UserRole,
+) {
+  const payload = { sub: userId, email, role };
 
-    const accessToken = this.jwt.sign(payload, {
-      secret: this.config.get<string>('JWT_SECRET'),
-      expiresIn: this.config.get<string>('JWT_ACCESS_EXPIRES_IN'),
-    });
+  const accessToken = this.jwt.sign(payload, {
+    secret: this.config.get<string>('JWT_SECRET'),
+    expiresIn: this.config.get<string>('JWT_EXPIRES_IN'),
+  });
 
-    const refreshToken = this.jwt.sign(payload, {
-      secret: this.config.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn: this.config.get<string>('JWT_REFRESH_EXPIRES_IN'),
-    });
+  const refreshToken = this.jwt.sign(payload, {
+    secret: this.config.get<string>('JWT_REFRESH_SECRET'),
+    expiresIn: this.config.get<string>('JWT_REFRESH_EXPIRES_IN'),
+  });
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+  const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        refreshTokenHash,
-      },
-    });
+  await this.prisma.user.update({
+    where: { id: userId },
+    data: { refreshTokenHash },
+  });
 
-    return {
-      accessToken,
-      refreshToken,
-    };
-  }
+  return {
+    accessToken,
+    refreshToken,
+  };
+}
 
-  private sanitizeUser<T extends Record<string, any>>(user: T) {
-    const { passwordHash, refreshTokenHash, ...safeUser } = user;
-    return safeUser;
-  }
+private sanitizeUser<T extends Record<string, any>>(user: T) {
+  const { passwordHash, refreshTokenHash, ...safeUser } = user;
+  return safeUser;
+}
 }

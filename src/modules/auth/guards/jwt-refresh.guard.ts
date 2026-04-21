@@ -1,4 +1,8 @@
-import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
 @Injectable()
@@ -19,11 +23,7 @@ export class JwtRefreshGuard extends AuthGuard('jwt-refresh') {
       throw new UnauthorizedException('Refresh token não encontrado');
     }
 
-    // injeta no header para o passport validar
     request.headers.authorization = `Bearer ${refreshToken}`;
-
-    // salva no request para o service usar depois
-    request.refreshToken = refreshToken;
 
     return request;
   }
